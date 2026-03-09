@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>2025 Multiplayer</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <canvas id="fireworks"></canvas>
+
+    <div class="floating">
+      Make 45 groups of 45! (By combining two at a time.)
+      &nbsp; Score: <span id="score">0</span>
+      &nbsp; Mistakes: <span id="mistakes">0</span>
+      &nbsp; Players: <span id="players">0</span>
+      &nbsp; <button type="button" id="deselect" disabled>Deselect</button>
+      &nbsp; <span id="status">Connecting...</span>
+    </div>
+
+    <button id="settings-cog" class="settings-cog" aria-label="Settings">&#9881;</button>
+    <div id="settings-menu" class="settings-menu hidden">
+      <button id="reset-game" class="danger">Reset game</button>
+    </div>
+
+    <div id="board-wrapper">
+      <table id="board"></table>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

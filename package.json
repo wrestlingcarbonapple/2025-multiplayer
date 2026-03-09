@@ -1,0 +1,14 @@
+{
+  "name": "45multi",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Multiplayer version of 2025 with WebSocket backend and persisted state",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "ws": "^8.18.3"
+  }
+}

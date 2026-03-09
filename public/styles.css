@@ -1,0 +1,152 @@
+body {
+  margin: 0;
+  background-color: #11151d;
+  color: #e8ebf0;
+  font-family: "Segoe UI", Tahoma, sans-serif;
+}
+
+.bigbut {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.shake {
+  animation: shake 0.5s;
+  animation-iteration-count: 1;
+}
+
+.tile {
+  background: #1f2330;
+  border: 1px solid #aab2c5;
+  border-radius: 4px;
+  color: #ffffff;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.15;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.tile.selected {
+  filter: invert(100%);
+}
+
+.red {
+  color: #ff2f2f;
+}
+
+.floating {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 999;
+  width: 100%;
+  background-color: #1f5d70;
+  color: #eef7ff;
+  padding: 5px 8px;
+  padding-right: 40px;
+  font-size: 15px;
+}
+
+#status {
+  color: #dce8ef;
+  font-size: 13px;
+}
+
+#board-wrapper {
+  padding-top: 56px;
+  position: absolute;
+}
+
+#board {
+  border-collapse: collapse;
+}
+
+#board td {
+  padding: 2px;
+  vertical-align: top;
+}
+
+.settings-cog {
+  position: fixed;
+  top: 4px;
+  right: 8px;
+  z-index: 1000;
+  border: 1px solid #7f8593;
+  background: #2b2d3a;
+  color: #e8ebf0;
+  border-radius: 4px;
+  width: 24px;
+  height: 24px;
+  line-height: 18px;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.settings-menu {
+  position: fixed;
+  top: 32px;
+  right: 8px;
+  z-index: 1000;
+  background: #1b1e27;
+  border: 1px solid #787f8f;
+  padding: 6px;
+}
+
+.settings-menu button {
+  border: 1px solid #8a90a0;
+  background: #2b2d3a;
+  color: #e8ebf0;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.settings-menu .danger {
+  color: #b00000;
+}
+
+.hidden {
+  display: none;
+}
+
+#fireworks {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 10000;
+}
+
+@keyframes shake {
+  0% { transform: translateX(1px) rotate(0deg); }
+  10% { transform: translateX(-1px) rotate(-1deg); }
+  20% { transform: translateX(-3px) rotate(1deg); }
+  30% { transform: translateX(3px) rotate(0deg); }
+  40% { transform: translateX(1px) rotate(1deg); }
+  50% { transform: translateX(-1px) rotate(-1deg); }
+  60% { transform: translateX(-3px) rotate(0deg); }
+  70% { transform: translateX(3px) rotate(-1deg); }
+  80% { transform: translateX(-1px) rotate(1deg); }
+  90% { transform: translateX(1px) rotate(0deg); }
+  100% { transform: translateX(1px) rotate(-1deg); }
+}
+
+@media (max-width: 900px) {
+  .tile {
+    font-size: 12px;
+    padding: 3px 6px;
+  }
+
+  .floating {
+    font-size: 13px;
+    padding-right: 44px;
+  }
+
+  #status {
+    font-size: 12px;
+  }
+}
