@@ -33,6 +33,11 @@ body {
   filter: invert(100%);
 }
 
+.tile.other-selected {
+  outline: 2px solid var(--other-select-color, #ffffff);
+  outline-offset: 1px;
+}
+
 .red {
   color: #ff2f2f;
 }
@@ -79,6 +84,33 @@ body {
 
 #board-wrapper.settling {
   transition: transform 160ms ease-out;
+}
+
+#remote-viewports {
+  position: absolute;
+  left: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.viewport-marker {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid var(--player-color, #ffffff);
+  border-radius: 6px;
+}
+
+.viewport-marker-label {
+  position: absolute;
+  top: -20px;
+  left: 0;
+  background: var(--player-color, #ffffff);
+  color: #0f131a;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 #board {

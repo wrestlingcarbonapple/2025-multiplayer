@@ -9,6 +9,7 @@ const settingsCogEl = document.getElementById('settings-cog');
 const settingsMenuEl = document.getElementById('settings-menu');
 const setNameEl = document.getElementById('set-name');
 const resetGameEl = document.getElementById('reset-game');
+const remoteViewportsEl = document.getElementById('remote-viewports');
 
 let ws;
 let clientId = null;
@@ -27,6 +28,9 @@ let panDragged = false;
 let suppressClicksUntil = 0;
 const playerColors = new Map();
 const PAN_OVERSCROLL_PX = 20;
+const VIEWPORT_SYNC_INTERVAL_MS = 120;
+let viewportSyncTimer = null;
+let lastViewportSyncAt = 0;
 
 connect();
 applyBoardOffset(false);
@@ -53,6 +57,7 @@ function connect() {
       applySavedName();
       ensureBoard(state.boardSize);
       renderAll();
+      queueViewportSync(true);
       return;
     }
 
@@ -69,6 +74,7 @@ function connect() {
 
 function ensureBoard(size) {
   if (boardEl.dataset.size === String(size) && tileButtons.size === size * size) {
+    syncViewportOverlayFrame();
     return;
   }
 
@@ -98,6 +104,8 @@ function ensureBoard(size) {
   }
 
   boardEl.dataset.size = String(size);
+  syncViewportOverlayFrame();
+  applyBoardOffset(false);
 }
 
 function renderAll() {
@@ -108,7 +116,6 @@ function renderAll() {
   scoreEl.textContent = String(state.score);
   mistakesEl.textContent = String(state.mistakes);
   renderPlayers();
-  const lookersByCell = collectLookersByCell();
 
   const selectedId = state.selections?.[clientId] || null;
   deselectEl.disabled = !selectedId;
@@ -125,6 +132,8 @@ function renderAll() {
       button.disabled = true;
       button.style.visibility = 'hidden';
       button.classList.remove('selected', 'completed');
+      button.classList.remove('other-selected');
+      button.style.removeProperty('--other-select-color');
       continue;
     }
 
@@ -140,7 +149,7 @@ function renderAll() {
       button.style.background = stringToLightColor(cell.category);
       button.innerHTML = `<b>${escapeHtml(cell.category)}</b>`;
       button.title = '';
-      applyLookingStyle(button, lookersByCell.get(cell.id) || []);
+      applyOtherSelectionStyle(button, cell.id);
       continue;
     }
 
@@ -158,8 +167,10 @@ function renderAll() {
       button.title = cell.cluster.join('\n');
     }
 
-    applyLookingStyle(button, lookersByCell.get(cell.id) || []);
+    applyOtherSelectionStyle(button, cell.id);
   }
+
+  renderRemoteViewports();
 }
 
 function handleEvent(event) {
@@ -278,6 +289,7 @@ window.addEventListener('pointermove', (event) => {
   boardOffsetY = panOriginY + dy;
   panDragged ||= Math.abs(dx) + Math.abs(dy) > 4;
   applyBoardOffset(true);
+  queueViewportSync();
 });
 
 window.addEventListener('pointerup', (event) => {
@@ -306,11 +318,14 @@ boardEl.addEventListener(
 );
 
 window.addEventListener('resize', () => {
+  syncViewportOverlayFrame();
   if (panPointerId === null) {
     settleBoardToBounds();
+    queueViewportSync(true);
     return;
   }
   applyBoardOffset(true);
+  queueViewportSync();
 });
 
 function shake(el) {
@@ -489,6 +504,7 @@ function stopFireworks() {
 
 function applyBoardOffset(allowOverscroll) {
   clampBoardOffset(allowOverscroll);
+  syncViewportOverlayFrame();
   boardWrapperEl.style.transform = `translate(${boardOffsetX}px, ${boardOffsetY}px)`;
 }
 
@@ -515,6 +531,7 @@ function endPan() {
   panDragged = false;
   document.body.classList.remove('panning');
   settleBoardToBounds();
+  queueViewportSync(true);
 }
 
 function clampBoardOffset(allowOverscroll) {
@@ -578,45 +595,114 @@ function renderPlayers() {
   playersEl.innerHTML = `${players.length}${chips.length ? `: ${chips.join(' ')}` : ''}`;
 }
 
-function collectLookersByCell() {
-  const map = new Map();
-  const selections = state.selections || {};
+function applyOtherSelectionStyle(button, cellId) {
   const players = state.players || {};
-  for (const [playerId, cellId] of Object.entries(selections)) {
-    if (!cellId || !players[playerId]) {
+  const selections = state.selections || {};
+  const selectedByOthers = [];
+
+  for (const [playerId, selectedCellId] of Object.entries(selections)) {
+    if (playerId === clientId || selectedCellId !== cellId || !players[playerId]) {
       continue;
     }
-    if (!map.has(cellId)) {
-      map.set(cellId, []);
-    }
-    map.get(cellId).push(players[playerId]);
+    selectedByOthers.push(players[playerId]);
   }
-  return map;
-}
 
-function applyLookingStyle(button, lookers) {
-  if (!lookers.length) {
-    button.style.boxShadow = '';
-    button.style.outline = '';
-    button.style.outlineOffset = '';
-    button.title = button.title || '';
+  if (!selectedByOthers.length) {
+    button.classList.remove('other-selected');
+    button.style.removeProperty('--other-select-color');
     return;
   }
 
-  const shadows = [];
-  const lookerNames = [];
-  for (let i = 0; i < lookers.length; i += 1) {
-    const player = lookers[i];
-    const color = getPlayerColor(player.id);
-    shadows.push(`0 0 0 ${2 + (i * 3)}px ${color}`);
-    lookerNames.push(player.id === clientId ? `${player.name} (you)` : player.name);
-  }
-  button.style.boxShadow = shadows.join(', ');
-  button.style.outline = `2px solid ${getPlayerColor(lookers[0].id)}`;
-  button.style.outlineOffset = '1px';
+  button.classList.add('other-selected');
+  button.style.setProperty('--other-select-color', getPlayerColor(selectedByOthers[0].id));
+}
 
-  const currentTitle = button.title ? `${button.title}\n` : '';
-  button.title = `${currentTitle}Looking: ${lookerNames.join(', ')}`;
+function renderRemoteViewports() {
+  remoteViewportsEl.innerHTML = '';
+
+  const players = state.players || {};
+  const viewports = state.viewports || {};
+  for (const [playerId, viewport] of Object.entries(viewports)) {
+    if (playerId === clientId || !players[playerId] || !viewport) {
+      continue;
+    }
+    if (viewport.width <= 0 || viewport.height <= 0) {
+      continue;
+    }
+
+    const color = getPlayerColor(playerId);
+    const marker = document.createElement('div');
+    marker.className = 'viewport-marker';
+    marker.style.setProperty('--player-color', color);
+    marker.style.left = `${viewport.x}px`;
+    marker.style.top = `${viewport.y}px`;
+    marker.style.width = `${viewport.width}px`;
+    marker.style.height = `${viewport.height}px`;
+
+    const label = document.createElement('div');
+    label.className = 'viewport-marker-label';
+    label.style.setProperty('--player-color', color);
+    label.textContent = players[playerId].name;
+
+    marker.appendChild(label);
+    remoteViewportsEl.appendChild(marker);
+  }
+}
+
+function syncViewportOverlayFrame() {
+  const topInset = getBoardTopInset();
+  remoteViewportsEl.style.top = `${topInset}px`;
+  remoteViewportsEl.style.width = `${boardEl.offsetWidth}px`;
+  remoteViewportsEl.style.height = `${boardEl.offsetHeight}px`;
+}
+
+function getBoardTopInset() {
+  return parseFloat(window.getComputedStyle(boardWrapperEl).paddingTop) || 0;
+}
+
+function queueViewportSync(forceNow) {
+  if (!state || !clientId) {
+    return;
+  }
+
+  const now = Date.now();
+  const elapsed = now - lastViewportSyncAt;
+  if (forceNow || elapsed >= VIEWPORT_SYNC_INTERVAL_MS) {
+    lastViewportSyncAt = now;
+    send({ type: 'viewport', viewport: computeLocalViewport() });
+    if (viewportSyncTimer) {
+      clearTimeout(viewportSyncTimer);
+      viewportSyncTimer = null;
+    }
+    return;
+  }
+
+  if (viewportSyncTimer) {
+    return;
+  }
+  viewportSyncTimer = setTimeout(() => {
+    viewportSyncTimer = null;
+    queueViewportSync(true);
+  }, VIEWPORT_SYNC_INTERVAL_MS - elapsed);
+}
+
+function computeLocalViewport() {
+  const boardWidth = boardEl.offsetWidth;
+  const boardHeight = boardEl.offsetHeight;
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = Math.max(0, window.innerHeight - getBoardTopInset());
+
+  const left = clamp(-boardOffsetX, 0, boardWidth);
+  const top = clamp(-boardOffsetY, 0, boardHeight);
+  const right = clamp(viewportWidth - boardOffsetX, 0, boardWidth);
+  const bottom = clamp(viewportHeight - boardOffsetY, 0, boardHeight);
+
+  return {
+    x: left,
+    y: top,
+    width: Math.max(0, right - left),
+    height: Math.max(0, bottom - top)
+  };
 }
 
 function getPlayerColor(playerId) {

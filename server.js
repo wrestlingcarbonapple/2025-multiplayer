@@ -34,6 +34,7 @@ wss.on('connection', (ws) => {
     name: defaultPlayerName(playerNumber)
   };
   gameState.selections[clientId] = null;
+  gameState.viewports[clientId] = null;
 
   ws.send(JSON.stringify({
     type: 'init',
@@ -75,12 +76,19 @@ wss.on('connection', (ws) => {
       }
       player.name = normalizePlayerName(msg.name, player.number);
       broadcast({ type: 'state', state: publicState() });
+      return;
+    }
+
+    if (msg.type === 'viewport') {
+      gameState.viewports[clientId] = normalizeViewport(msg.viewport);
+      broadcast({ type: 'state', state: publicState() });
     }
   });
 
   ws.on('close', () => {
     delete gameState.selections[clientId];
     delete gameState.players[clientId];
+    delete gameState.viewports[clientId];
     broadcast({ type: 'state', state: publicState() });
   });
 });
@@ -153,7 +161,8 @@ function publicState() {
     mistakes: gameState.mistakes,
     cells: gameState.cells,
     selections: gameState.selections,
-    players: gameState.players
+    players: gameState.players,
+    viewports: gameState.viewports
   };
 }
 
@@ -168,8 +177,10 @@ function broadcast(payload) {
 
 function resetGame() {
   const existingPlayers = gameState.players;
+  const existingViewports = gameState.viewports;
   gameState = createNewState();
   gameState.players = existingPlayers;
+  gameState.viewports = existingViewports;
   for (const clientId of Object.keys(existingPlayers)) {
     gameState.selections[clientId] = null;
   }
@@ -224,7 +235,8 @@ function createNewState() {
     cells,
     cellsById,
     selections: {},
-    players: {}
+    players: {},
+    viewports: {}
   };
 }
 
@@ -264,7 +276,8 @@ function inflateState(parsed) {
     cells: parsed.cells,
     cellsById,
     selections: {},
-    players: {}
+    players: {},
+    viewports: {}
   };
 }
 
@@ -299,4 +312,26 @@ function defaultPlayerName(playerNumber) {
 function normalizePlayerName(name, playerNumber) {
   const cleaned = String(name || '').trim().slice(0, 32);
   return cleaned || defaultPlayerName(playerNumber);
+}
+
+function normalizeViewport(input) {
+  if (!input || typeof input !== 'object') {
+    return null;
+  }
+
+  const x = Number(input.x);
+  const y = Number(input.y);
+  const width = Number(input.width);
+  const height = Number(input.height);
+
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(width) || !Number.isFinite(height)) {
+    return null;
+  }
+
+  return {
+    x: Math.max(0, Math.round(x)),
+    y: Math.max(0, Math.round(y)),
+    width: Math.max(0, Math.round(width)),
+    height: Math.max(0, Math.round(height))
+  };
 }
