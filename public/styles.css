@@ -58,6 +58,8 @@ body {
 #board-wrapper {
   padding-top: 56px;
   position: absolute;
+  transform: translate(0, 0);
+  touch-action: none;
 }
 
 #board {
@@ -149,4 +151,15 @@ body {
   #status {
     font-size: 12px;
   }
+}
+
+body.space-pan-ready #board-wrapper,
+body.space-pan-ready #board-wrapper * {
+  cursor: grab !important;
+}
+
+body.panning,
+body.panning * {
+  cursor: grabbing !important;
+  user-select: none;
 }

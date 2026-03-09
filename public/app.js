@@ -3,6 +3,7 @@ const mistakesEl = document.getElementById('mistakes');
 const playersEl = document.getElementById('players');
 const statusEl = document.getElementById('status');
 const boardEl = document.getElementById('board');
+const boardWrapperEl = document.getElementById('board-wrapper');
 const deselectEl = document.getElementById('deselect');
 const settingsCogEl = document.getElementById('settings-cog');
 const settingsMenuEl = document.getElementById('settings-menu');
@@ -13,8 +14,19 @@ let clientId = null;
 let state = null;
 let tileButtons = new Map();
 let fireworksRunning = false;
+let boardOffsetX = 0;
+let boardOffsetY = 0;
+let spaceHeld = false;
+let panPointerId = null;
+let panStartX = 0;
+let panStartY = 0;
+let panOriginX = 0;
+let panOriginY = 0;
+let panDragged = false;
+let suppressClicksUntil = 0;
 
 connect();
+applyBoardOffset();
 
 function connect() {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -203,6 +215,79 @@ resetGameEl.addEventListener('click', () => {
   }
 });
 
+window.addEventListener('keydown', (event) => {
+  if (event.code !== 'Space') {
+    return;
+  }
+  event.preventDefault();
+  if (spaceHeld) {
+    return;
+  }
+  spaceHeld = true;
+  document.body.classList.add('space-pan-ready');
+});
+
+window.addEventListener('keyup', (event) => {
+  if (event.code !== 'Space') {
+    return;
+  }
+  event.preventDefault();
+  spaceHeld = false;
+  document.body.classList.remove('space-pan-ready');
+  endPan();
+});
+
+window.addEventListener('blur', () => {
+  spaceHeld = false;
+  document.body.classList.remove('space-pan-ready');
+  endPan();
+});
+
+document.addEventListener('pointerdown', (event) => {
+  if (!spaceHeld || event.button !== 0 || !boardWrapperEl.contains(event.target)) {
+    return;
+  }
+  startPan(event);
+});
+
+window.addEventListener('pointermove', (event) => {
+  if (event.pointerId !== panPointerId) {
+    return;
+  }
+
+  const dx = event.clientX - panStartX;
+  const dy = event.clientY - panStartY;
+  boardOffsetX = panOriginX + dx;
+  boardOffsetY = panOriginY + dy;
+  panDragged ||= Math.abs(dx) + Math.abs(dy) > 4;
+  applyBoardOffset();
+});
+
+window.addEventListener('pointerup', (event) => {
+  if (event.pointerId !== panPointerId) {
+    return;
+  }
+  endPan();
+});
+
+window.addEventListener('pointercancel', (event) => {
+  if (event.pointerId !== panPointerId) {
+    return;
+  }
+  endPan();
+});
+
+boardEl.addEventListener(
+  'click',
+  (event) => {
+    if (performance.now() < suppressClicksUntil) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  },
+  true
+);
+
 function shake(el) {
   el.classList.add('shake');
   el.addEventListener(
@@ -375,4 +460,31 @@ function startFireworks() {
 
 function stopFireworks() {
   fireworksRunning = false;
+}
+
+function applyBoardOffset() {
+  boardWrapperEl.style.transform = `translate(${boardOffsetX}px, ${boardOffsetY}px)`;
+}
+
+function startPan(event) {
+  panPointerId = event.pointerId;
+  panStartX = event.clientX;
+  panStartY = event.clientY;
+  panOriginX = boardOffsetX;
+  panOriginY = boardOffsetY;
+  panDragged = false;
+  document.body.classList.add('panning');
+  event.preventDefault();
+}
+
+function endPan() {
+  if (panPointerId === null) {
+    return;
+  }
+  if (panDragged) {
+    suppressClicksUntil = performance.now() + 80;
+  }
+  panPointerId = null;
+  panDragged = false;
+  document.body.classList.remove('panning');
 }
