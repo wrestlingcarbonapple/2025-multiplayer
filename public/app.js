@@ -7,6 +7,7 @@ const boardWrapperEl = document.getElementById('board-wrapper');
 const deselectEl = document.getElementById('deselect');
 const settingsCogEl = document.getElementById('settings-cog');
 const settingsMenuEl = document.getElementById('settings-menu');
+const setNameEl = document.getElementById('set-name');
 const resetGameEl = document.getElementById('reset-game');
 
 let ws;
@@ -24,9 +25,11 @@ let panOriginX = 0;
 let panOriginY = 0;
 let panDragged = false;
 let suppressClicksUntil = 0;
+const playerColors = new Map();
+const PAN_OVERSCROLL_PX = 20;
 
 connect();
-applyBoardOffset();
+applyBoardOffset(false);
 
 function connect() {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -47,6 +50,7 @@ function connect() {
     if (msg.type === 'init') {
       clientId = msg.clientId;
       state = msg.state;
+      applySavedName();
       ensureBoard(state.boardSize);
       renderAll();
       return;
@@ -60,9 +64,6 @@ function connect() {
       return;
     }
 
-    if (msg.type === 'presence') {
-      playersEl.textContent = String(msg.players);
-    }
   });
 }
 
@@ -106,6 +107,8 @@ function renderAll() {
 
   scoreEl.textContent = String(state.score);
   mistakesEl.textContent = String(state.mistakes);
+  renderPlayers();
+  const lookersByCell = collectLookersByCell();
 
   const selectedId = state.selections?.[clientId] || null;
   deselectEl.disabled = !selectedId;
@@ -137,6 +140,7 @@ function renderAll() {
       button.style.background = stringToLightColor(cell.category);
       button.innerHTML = `<b>${escapeHtml(cell.category)}</b>`;
       button.title = '';
+      applyLookingStyle(button, lookersByCell.get(cell.id) || []);
       continue;
     }
 
@@ -153,6 +157,8 @@ function renderAll() {
       button.innerHTML = `<b>${label}</b>`;
       button.title = cell.cluster.join('\n');
     }
+
+    applyLookingStyle(button, lookersByCell.get(cell.id) || []);
   }
 }
 
@@ -215,6 +221,17 @@ resetGameEl.addEventListener('click', () => {
   }
 });
 
+setNameEl.addEventListener('click', () => {
+  settingsMenuEl.classList.add('hidden');
+  const current = state?.players?.[clientId]?.name || '';
+  const nextName = window.prompt('Your player name:', current);
+  if (nextName === null) {
+    return;
+  }
+  send({ type: 'set-name', name: nextName });
+  localStorage.setItem('player-name', nextName);
+});
+
 window.addEventListener('keydown', (event) => {
   if (event.code !== 'Space') {
     return;
@@ -244,7 +261,7 @@ window.addEventListener('blur', () => {
 });
 
 document.addEventListener('pointerdown', (event) => {
-  if (!spaceHeld || event.button !== 0 || !boardWrapperEl.contains(event.target)) {
+  if (!spaceHeld || event.button !== 0) {
     return;
   }
   startPan(event);
@@ -260,7 +277,7 @@ window.addEventListener('pointermove', (event) => {
   boardOffsetX = panOriginX + dx;
   boardOffsetY = panOriginY + dy;
   panDragged ||= Math.abs(dx) + Math.abs(dy) > 4;
-  applyBoardOffset();
+  applyBoardOffset(true);
 });
 
 window.addEventListener('pointerup', (event) => {
@@ -287,6 +304,14 @@ boardEl.addEventListener(
   },
   true
 );
+
+window.addEventListener('resize', () => {
+  if (panPointerId === null) {
+    settleBoardToBounds();
+    return;
+  }
+  applyBoardOffset(true);
+});
 
 function shake(el) {
   el.classList.add('shake');
@@ -462,11 +487,13 @@ function stopFireworks() {
   fireworksRunning = false;
 }
 
-function applyBoardOffset() {
+function applyBoardOffset(allowOverscroll) {
+  clampBoardOffset(allowOverscroll);
   boardWrapperEl.style.transform = `translate(${boardOffsetX}px, ${boardOffsetY}px)`;
 }
 
 function startPan(event) {
+  boardWrapperEl.classList.remove('settling');
   panPointerId = event.pointerId;
   panStartX = event.clientX;
   panStartY = event.clientY;
@@ -487,4 +514,123 @@ function endPan() {
   panPointerId = null;
   panDragged = false;
   document.body.classList.remove('panning');
+  settleBoardToBounds();
+}
+
+function clampBoardOffset(allowOverscroll) {
+  const boardWidth = boardEl.offsetWidth;
+  const boardHeight = boardEl.offsetHeight;
+  const viewportWidth = window.innerWidth;
+  const topInset = parseFloat(window.getComputedStyle(boardWrapperEl).paddingTop) || 0;
+  const viewportHeight = Math.max(0, window.innerHeight - topInset);
+
+  const overscroll = allowOverscroll ? PAN_OVERSCROLL_PX : 0;
+  const minX = Math.min(0, viewportWidth - boardWidth) - overscroll;
+  const minY = Math.min(0, viewportHeight - boardHeight) - overscroll;
+  const maxX = overscroll;
+  const maxY = overscroll;
+
+  boardOffsetX = clamp(boardOffsetX, minX, maxX);
+  boardOffsetY = clamp(boardOffsetY, minY, maxY);
+}
+
+function settleBoardToBounds() {
+  const previousX = boardOffsetX;
+  const previousY = boardOffsetY;
+  clampBoardOffset(false);
+  if (boardOffsetX === previousX && boardOffsetY === previousY) {
+    boardWrapperEl.classList.remove('settling');
+    boardWrapperEl.style.transform = `translate(${boardOffsetX}px, ${boardOffsetY}px)`;
+    return;
+  }
+
+  boardWrapperEl.classList.add('settling');
+  boardWrapperEl.style.transform = `translate(${boardOffsetX}px, ${boardOffsetY}px)`;
+  boardWrapperEl.addEventListener(
+    'transitionend',
+    () => {
+      boardWrapperEl.classList.remove('settling');
+    },
+    { once: true }
+  );
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function applySavedName() {
+  const savedName = localStorage.getItem('player-name');
+  if (!savedName) {
+    return;
+  }
+  send({ type: 'set-name', name: savedName });
+}
+
+function renderPlayers() {
+  const players = Object.values(state.players || {});
+  players.sort((a, b) => a.number - b.number);
+  const chips = players.map((player) => {
+    const color = getPlayerColor(player.id);
+    const label = player.id === clientId ? `${player.name} (you)` : player.name;
+    return `<span class="player-chip"><span class="player-dot" style="background:${color}"></span>${escapeHtml(label)}</span>`;
+  });
+  playersEl.innerHTML = `${players.length}${chips.length ? `: ${chips.join(' ')}` : ''}`;
+}
+
+function collectLookersByCell() {
+  const map = new Map();
+  const selections = state.selections || {};
+  const players = state.players || {};
+  for (const [playerId, cellId] of Object.entries(selections)) {
+    if (!cellId || !players[playerId]) {
+      continue;
+    }
+    if (!map.has(cellId)) {
+      map.set(cellId, []);
+    }
+    map.get(cellId).push(players[playerId]);
+  }
+  return map;
+}
+
+function applyLookingStyle(button, lookers) {
+  if (!lookers.length) {
+    button.style.boxShadow = '';
+    button.style.outline = '';
+    button.style.outlineOffset = '';
+    button.title = button.title || '';
+    return;
+  }
+
+  const shadows = [];
+  const lookerNames = [];
+  for (let i = 0; i < lookers.length; i += 1) {
+    const player = lookers[i];
+    const color = getPlayerColor(player.id);
+    shadows.push(`0 0 0 ${2 + (i * 3)}px ${color}`);
+    lookerNames.push(player.id === clientId ? `${player.name} (you)` : player.name);
+  }
+  button.style.boxShadow = shadows.join(', ');
+  button.style.outline = `2px solid ${getPlayerColor(lookers[0].id)}`;
+  button.style.outlineOffset = '1px';
+
+  const currentTitle = button.title ? `${button.title}\n` : '';
+  button.title = `${currentTitle}Looking: ${lookerNames.join(', ')}`;
+}
+
+function getPlayerColor(playerId) {
+  if (playerColors.has(playerId)) {
+    return playerColors.get(playerId);
+  }
+
+  let hash = 0;
+  for (let i = 0; i < playerId.length; i += 1) {
+    hash = playerId.charCodeAt(i) + ((hash << 5) - hash);
+  }
+
+  const h = Math.abs(hash) % 360;
+  const color = `hsl(${h}, 85%, 62%)`;
+  playerColors.set(playerId, color);
+  return color;
 }

@@ -19,11 +19,21 @@ const categories = JSON.parse(
 const statePath = path.join(__dirname, 'data', 'game-state.json');
 
 let gameState = loadOrCreateState();
+let nextPlayerNumber = 1;
 
 app.use(express.static(path.join(__dirname, 'public')));
 
 wss.on('connection', (ws) => {
   const clientId = crypto.randomUUID();
+  const playerNumber = nextPlayerNumber;
+  nextPlayerNumber += 1;
+
+  gameState.players[clientId] = {
+    id: clientId,
+    number: playerNumber,
+    name: defaultPlayerName(playerNumber)
+  };
+  gameState.selections[clientId] = null;
 
   ws.send(JSON.stringify({
     type: 'init',
@@ -31,7 +41,7 @@ wss.on('connection', (ws) => {
     state: publicState()
   }));
 
-  broadcastPresence();
+  broadcast({ type: 'state', state: publicState() });
 
   ws.on('message', (raw) => {
     let msg;
@@ -57,11 +67,20 @@ wss.on('connection', (ws) => {
       broadcast({ type: 'state', state: publicState(), event: { type: 'reset', by: clientId } });
       return;
     }
+
+    if (msg.type === 'set-name') {
+      const player = gameState.players[clientId];
+      if (!player) {
+        return;
+      }
+      player.name = normalizePlayerName(msg.name, player.number);
+      broadcast({ type: 'state', state: publicState() });
+    }
   });
 
   ws.on('close', () => {
     delete gameState.selections[clientId];
-    broadcastPresence();
+    delete gameState.players[clientId];
     broadcast({ type: 'state', state: publicState() });
   });
 });
@@ -133,7 +152,8 @@ function publicState() {
     score: gameState.score,
     mistakes: gameState.mistakes,
     cells: gameState.cells,
-    selections: gameState.selections
+    selections: gameState.selections,
+    players: gameState.players
   };
 }
 
@@ -146,12 +166,13 @@ function broadcast(payload) {
   }
 }
 
-function broadcastPresence() {
-  broadcast({ type: 'presence', players: wss.clients.size });
-}
-
 function resetGame() {
+  const existingPlayers = gameState.players;
   gameState = createNewState();
+  gameState.players = existingPlayers;
+  for (const clientId of Object.keys(existingPlayers)) {
+    gameState.selections[clientId] = null;
+  }
   persistState();
 }
 
@@ -202,7 +223,8 @@ function createNewState() {
     mistakes: 0,
     cells,
     cellsById,
-    selections: {}
+    selections: {},
+    players: {}
   };
 }
 
@@ -241,7 +263,8 @@ function inflateState(parsed) {
     mistakes: Number(parsed.mistakes || 0),
     cells: parsed.cells,
     cellsById,
-    selections: {}
+    selections: {},
+    players: {}
   };
 }
 
@@ -268,3 +291,12 @@ process.on('SIGTERM', () => {
   persistState();
   process.exit(0);
 });
+
+function defaultPlayerName(playerNumber) {
+  return `Player #${playerNumber}`;
+}
+
+function normalizePlayerName(name, playerNumber) {
+  const cleaned = String(name || '').trim().slice(0, 32);
+  return cleaned || defaultPlayerName(playerNumber);
+}
