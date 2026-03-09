@@ -24,6 +24,27 @@ npm start
 
 Then open `http://localhost:3000`.
 
+## Docker
+
+Build:
+
+```bash
+docker build -t 2025-multiplayer .
+```
+
+Run:
+
+```bash
+docker run --rm -p 3000:3000 -v "$(pwd)/data:/app/data" 2025-multiplayer
+```
+
+Then open `http://localhost:3000`.
+
 ## Notes
 - Score target is 1980 (same as original: combine 2025 words down to 45 groups).
 - All players share one board and one score.
+
+## Security Note
+- This project currently has no authentication/authorization and limited abuse protections.
+- It is not hardened for internet-wide public deployment as-is.
+- For public hosting, add auth, rate limits, WebSocket origin checks, and run behind HTTPS/reverse proxy protections.
