@@ -1,7 +1,12 @@
 # 2025 Multiplayer
 
-Multiplayer adaptation of the original 2025 game by Thomas Colthurst:
-- Original: https://thomaswc.com/2025.html
+Multiplayer adaptation of the original 2025 game.
+
+## Credit
+This project is based on the original **2025** by **Thomas Colthurst**.  
+His original concept and implementation are excellent, creative, and genuinely fun to play.
+
+- Original game: https://thomaswc.com/2025.html
 - License note in source: CC BY-SA 4.0
 
 ## Features
